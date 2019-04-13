@@ -14,12 +14,14 @@ int main(int argc, char *argv[]) {
 	
 	FILE *file;
 	FILE *img; 
+	FILE *ipl; 
 		
     int filesize; 		//需要写入的文件大小 
-    struct stat buf;
+    struct stat f_struct;    //文件描述符结构体 
     int secs;           //文件占用扇区数 
-    int cu;
     int startcu=2;      //FAT区的开始簇号 
+    int buffsize=512;   //读取缓冲区大小 
+    unsigned char buffer[buffsize];    //读取缓冲区，读取时使用无符号 
     
 	if(argc==3){
 		//第一个参数argv[0]指向exe文件的绝对地址 
@@ -38,15 +40,32 @@ int main(int argc, char *argv[]) {
 		printf("错误：输入格式错误");
 	} 
 	 
-    stat(argv[2], &buf);           //得到文件结构描述符 
-    filesize = buf.st_size; 
-    long modify_time=buf.st_mtime;    //最近修改时间 (seconds passed from 01/01/00:00:00 1970 UTC)
+    stat(argv[2], &f_struct);           //得到文件结构描述符 
+    filesize = f_struct.st_size; 
+    long modify_time=f_struct.st_mtime;    //最近修改时间 (seconds passed from 01/01/00:00:00 1970 UTC)
     secs=filesize%512==0?(filesize/512):(filesize/512+1); 
     unsigned short fat[secs];    //FAT项 
 	
 	
 	/*写引导扇区 */
 	//引导扇区为磁盘的第0扇区 
+	fseek(img,510,0);
+	unsigned char sign[2];
+	fread(sign,sizeof(unsigned char),sizeof(sign),img);
+	ipl=fopen("ipl.bin","rb");
+	if(sign[0]!=0xaa||sign[1]!=0x55){
+		if(ipl==NULL){
+			printf("错误：引导扇区文件ipl丢失！！！"); 
+			fclose(img);
+			fclose(file);
+			return 1; 
+		}
+		ipl=fopen("ipl.bin","rb");
+		fseek(img,0,0);
+		fread(buffer,sizeof(unsigned char),sizeof(buffer),ipl);
+		fwrite(buffer,sizeof(unsigned char),sizeof(buffer),img);
+		fclose(ipl);
+	} 
 	
 	
 	/*写FAT表*/ 
@@ -60,7 +79,7 @@ int main(int argc, char *argv[]) {
 	}
 	int secs_temp; 
 	secs_temp=secs;
-	if(secs&0x01==1){
+	if(secs&0x01==1){	
 		secs_temp=secs+1;	
 	}
 	int j=secs_temp/2*3;
@@ -70,6 +89,13 @@ int main(int argc, char *argv[]) {
 		changetoFat(fat[2*i],fat[2*i+1],p);
 		p=p+3;
 	}	
+	fseek(img,512,0);
+	buffer[0]=0xf0; 
+	buffer[1]=0xff; 
+	buffer[2]=0xff; 
+	fwrite(buffer,sizeof(unsigned char),3,img);
+	fseek(img,10*512,0);
+	fwrite(buffer,sizeof(unsigned char),3,img);
 	
 	fseek(img,512+3,0);           //前面三个字节(即第0,1簇)是固定的 f0 ff ff 
 	fwrite(temp2,j,1,img);        
@@ -107,8 +133,6 @@ int main(int argc, char *argv[]) {
 	/*写文件数据*/
 	fseek(img,33*512,0);
 	fseek(file,0,0);
-	int buffsize=256;
-	unsigned char *buffer[buffsize];    //读取缓冲区，读取时使用无符号 
 	int count;
 	
 	while(1){
