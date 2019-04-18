@@ -135,7 +135,7 @@ int changefromFat(ushort clu,int *s){
 int dealcat(int secs,FILE* img,Catalog* head){
 	
 	int filesum=0;   //软盘已存在文件数 
-	int cata_position=0;  //记录待会目录项要插入的位置 
+	int cata_position=-1;  //记录待会目录项要插入的位置 
 	uchar buffer[32];
 	Catalog *node=head;
 
@@ -144,8 +144,10 @@ int dealcat(int secs,FILE* img,Catalog* head){
 	while(true){
 		i++;
 		fread(buffer,sizeof(uchar),32,img);
-		if(buffer[0]==0||i==RootEntCnt){  //目录项已经结束 
-			cata_position=i;
+		if(buffer[0]==0||i==RootEntCnt){  //目录项已经结束
+			if(cata_position==-1){
+				cata_position=i;
+			} 
 			node->next=NULL;
 			break;
 		}else if(buffer[0]!=0xe5){  //存在的文件
